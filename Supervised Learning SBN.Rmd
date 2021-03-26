@@ -1,0 +1,404 @@
+---
+title: "Supervised Learning on Swiss Bank Notes"
+author: "Andrew Li"
+date: "3/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Libraries
+library(lattice)
+library(ellipse)
+library(ggplot2)
+library(MASS)
+library(mlbench)
+library(caret)
+```
+
+
+
+## Introduction
+
+In this report I will utilize supervised learning models to see if I can accuurately predict whether a note is false or couunterfeit. I will first explore the data and get insights. Then, I will divide the datasets into training and validation sets, implementing K-fold cross validation with K = 5. On each fold I will fit the data sets with the LDA and logistic regression models. I will evaluate and performance and try and see if there is a optimal model. From there, I will then use factor analysis to try and determine if dimensionality reduction is necessary/helpful. At the end of the report I hope to be able to determine which model performs the best.
+
+
+
+## Data
+
+Source: B.Flury and H.Riedwyl (1988), Multivariate Statistics: A Practical Approach
+Data URL: https://raw.githubusercontent.com/tuckermcelroy/ma189/main/Data/SBN.txt Data Description: Dataset contains 6 variables on 100 genuine and 100 counterfeit Swiss Bank Notes
+Variables:
+1. Length of the note
+2. Width of the Left-Hand side of the note
+3. Width of the Right-Hand side of the note
+4. Width of the Bottom Margin
+5. Width of the Top margin
+6. Diagonal Length of Printed Area
+
+
+
+
+```{r}
+swiss <- read.table("/Users/andrewli/desktop/ma189/Data/SBN.txt")
+# add a column for whether it's real (1) or fake (0)
+x <- c()
+for (i in 1:200){
+  if (i > 100){
+    x <- append(x, 0)
+  }
+  else{
+    x <- append(x, 1)
+  }
+}
+swiss$genuine = x
+head(swiss)
+real <- swiss[1:100,]
+fake <- swiss[101:200,]
+
+colMeans(real)
+colMeans(fake)
+cov(real)
+cov(fake)
+```
+
+I first added a column for the indicator variable for whether the note is real or fake, this column is called 'genuine'.
+
+From the means of the genuine versus counterfeit bank notes, we can see that there is a bigger difference in means for the top, bottom, and diagonal variables, which tells us that these attributes might be the key indicators for predicting whether a note is real or fake. 
+
+
+
+## Visualizations:
+
+
+```{r}
+cor <- cor(swiss)
+panel.corrgram <- function(x, y, z, subscripts, at, level=0.9, label=FALSE, ...) {
+ require("ellipse", quietly=TRUE)
+ x <- as.numeric(x)[subscripts]
+ y <- as.numeric(y)[subscripts]
+ z <- as.numeric(z)[subscripts]
+ zcol <- level.colors(z, at=at, ...)
+ for (i in seq(along = z)) {
+ ell = ellipse(z[i], level=level, npoints=50, scale=c(0.2,0.2), centre=c(x[i], y[i]))
+ panel.polygon(ell, col=zcol[i], border=zcol[i], ...)
+ }
+ if (label)
+ panel.text(x=x, y=y, lab=100*round(z,2), cex=0.8, col=ifelse(z<0, 'white', 'black'))
+}
+print(levelplot(cor[seq(1,6), seq(1,6)], at=do.breaks(c(-1.01,1.01), 20),
+ xlab=NULL, ylab=NULL, colorkey=list(space='top'), col.regions=rev(heat.colors(100)),
+ scales=list(x=list(rot=90)), panel=panel.corrgram, label=TRUE))
+
+#boxplots
+boxplot(swiss$Length ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Length of Note')
+boxplot(swiss$Left ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Left-side width')
+boxplot(swiss$Right ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Right-side width')
+boxplot(swiss$Bottom ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Bottom width')
+boxplot(swiss$Top ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Top width')
+boxplot(swiss$Diagonal ~ swiss$genuine, data = swiss, xlab = 'genuine or not', ylab = 'Diagonal Length')
+
+```
+From our level plot, we can see that there is a high relation between the Left and Right widths. We can see that there are some negative relationships. These results make sense to us given the geometry of a bank note. Also something to note is that there are a few outliers for both genuine and fake bank notes, and because our dataset is somewhat small this may affect our model performances.
+
+
+
+## Body
+
+
+I will split now split the data to perform LDA and regression.
+
+
+## K-fold Cross-Validation
+
+Here, I use the caret package to perform K-Folds cross-validation.
+
+
+
+## Linear Discriminant Analysis (LDA):
+Assumptions:
+
+1. The data from each variable group has a common mean vector that is equal to the population mean vector
+
+2. Homoskedasticity: the data from all groups has a common covariance matrix that does not depend on the group
+
+3. Independence: the observations of bank notesare independently sampled. 
+
+4. Normality: the data in our data set is multivariate normally distributed. 
+
+```{r}
+# split the data
+set.seed(100)
+inTrain <- createDataPartition(y= swiss$genuine, p = .8, list = FALSE)
+training <- swiss[inTrain,]
+testing <- swiss[-inTrain,]
+
+#fold 2
+ctrl <- trainControl(method = "cv", number = 2)
+ldaFold2 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold2
+ldaFold2$resample
+ldaFold2
+predLDA <- predict(ldaFold2, newdata = testing)
+confusionMatrix(predLDA, as.factor(testing$genuine))
+#fold 3
+ctrl <- trainControl(method = "cv", number = 3)
+ldaFold3 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold3
+ldaFold3$resample
+predLDA2 <- predict(ldaFold3, newdata = testing)
+confusionMatrix(predLDA2, as.factor(testing$genuine))
+# make number 2-4 and evaluate accordingly
+#fold 4
+ctrl <- trainControl(method = "cv", number = 4)
+ldaFold4 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold4
+ldaFold4$resample
+predLDA3 <- predict(ldaFold4, newdata = testing)
+confusionMatrix(predLDA3, as.factor(testing$genuine))
+
+#fold 5
+ctrl <- trainControl(method = "cv", number = 5)
+ldaFold5 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold5
+ldaFold5$resample
+predLDA4 <- predict(ldaFold5, newdata = testing)
+confusionMatrix(predLDA4, as.factor(testing$genuine))
+```
+
+
+Here I use caret package to perform my K-fold Cross validation. I first split the data into training and testing sets, and used the train control function on folds 2-5. From there I utilized the model I trained to predict in the validation set.
+
+As we can see, the LDA performs almost perfectly across the folds, yielding near perfect accuracy for each fold. This can be a little troubling to see, as there can be something wrong with out dataset or our model is redundant, but also the distinguishment between what's real and what's fake can just be very accurate. his means that it is likely very easy to determine whether a bank note is real or fake. Next, we will fit a logistic regression model and evaluate the performance.
+
+
+
+
+
+## Logistic Regression:
+
+
+Assumptions:
+
+1. Dependent variable 'genuine' is a binary (0, 1) type. 
+
+2. Bank Notes observations are independent from one another.
+
+3. There is little or no multicollinearity among the independent variables. Only between left and right widths is there a high correlation with each other, so this may affect our model.
+
+4. Independent variables and log odds are linearly related.
+
+5. Sample size of 200 is relatively small, so we approach this model with caution.
+
+
+```{r warning = FALSE}
+#fold 2
+ctrl <- trainControl(method = "cv", number = 2)
+lrFold2 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrFold2
+lrFold2$resample
+pred2 <- predict(lrFold2, newdata = testing)
+confusionMatrix(pred2, as.factor(testing$genuine))
+
+#fold 3
+ctrl <- trainControl(method = "cv", number = 3)
+lrFold3 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrFold3
+lrFold3$resample
+pred3 <- predict(lrFold3, newdata = testing)
+confusionMatrix(pred3, as.factor(testing$genuine))
+
+#fold 4
+ctrl <- trainControl(method = "cv", number = 4)
+lrFold4 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrFold4
+lrFold4$resample
+pred4 <- predict(lrFold4, newdata = testing)
+confusionMatrix(pred4, as.factor(testing$genuine))
+
+#fold 5
+ctrl <- trainControl(method = "cv", number = 5)
+lrFold5 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrFold5
+lrFold5$resample
+pred5 <- predict(lrFold5, newdata = testing)
+confusionMatrix(pred5, as.factor(testing$genuine))
+
+
+```
+
+
+From our logistic regression model we had a perfect accuracy performance, an extremely high performance that is similar to our LDA model. It seems that LDA model does seem to perform better across different fold numbers. We get an error message, as the algorithm believes it is too good to be true, so perhaps the model is redundant. However, our prediction accuracy is still resasonable, so this gives actually us more evidence that it there is a significant difference in the distribution between the variables for a genuine note versus a counterfeit note. I will now perform factor analysis to see if factor scores would improve the model.
+
+
+
+## Factor Analysis
+
+
+Assumptions:
+
+1. Common factors all have mean zero. Specific factors all have mean zero.
+2. Covariance matrix is equal to an m x m dimensional identity matrix. 
+3. Data are independently sampled from a multivariate normal distribution with mean vector $\underline{\mu}$ and variance-covariance matrix ${\mathbf \Sigma}$ of the form: 
+\[
+{\mathbf \Sigma} =
+ {\mathbf L} \,  {\mathbf L}^{\prime}    +  {\mathbf \Psi}.
+ \]
+
+3. Common factors and random errors are uncorrelated
+
+```{r}
+
+# factor model using MLE
+n_factors <- 1
+fa_fit <- factanal(swiss, n_factors, rotation='varimax', scores = "regression")
+loading <- fa_fit$loadings[ ,1]
+t(loading)
+fa_fit$loadings
+
+# 3 factors 
+n_factors <- 3
+fa_fit <- factanal(swiss, n_factors, rotation='varimax', scores = "regression")
+loading <- fa_fit$loadings[ ,1:3]
+t(loading)
+fa_fit$loadings
+#2 factors
+n_factors <- 2
+fa_fit <- factanal(swiss, n_factors, rotation='varimax', scores = "regression")
+loading <- fa_fit$loadings[ ,1:2]
+t(loading)
+fa_fit$loadings
+
+```
+
+
+So here I performed factor analysis with 1, 2, and 3 factors. I will go with a 2 factors, which reduces the dimensionality from 6 to 2, because 2 factors performs the best for explaining original variance between the 3 choices. The cumulative var explained is .648 for 2 factors. Next, I will run the model on 2 factor scores and evaluate performance results.
+
+
+
+
+
+## LDA on Factors:
+```{r}
+#convert factor scores and indicator column into table
+fact1 <- c(fa_fit$scores[1:100])
+fact2 <- c(fa_fit$scores[101:200])
+factor.df <- data.frame(fact1, fact2, x)
+
+#split the factor score data
+set.seed(100)
+inTrain <- createDataPartition(y= factor.df$x, p = .8, list = FALSE)
+training <- swiss[inTrain,]
+testing <- swiss[-inTrain,]
+
+#2 fold
+ctrl <- trainControl(method = "cv", number = 2)
+ldaFold2 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold2
+ldaFold2$resample
+predf2 <- predict(ldaFold2, newdata = testing)
+confusionMatrix(predf2, as.factor(testing$genuine))
+
+#3 fold
+ctrl <- trainControl(method = "cv", number = 3)
+ldaFold3 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold3
+ldaFold3$resample
+predf3 <- predict(ldaFold3, newdata = testing)
+confusionMatrix(predf3, as.factor(testing$genuine))
+
+#4 Fold
+ctrl <- trainControl(method = "cv", number = 4)
+ldaFold4 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold4
+ldaFold4$resample
+predf4 <- predict(ldaFold4, newdata = testing)
+confusionMatrix(predf4, as.factor(testing$genuine))
+
+#5 fold
+ctrl <- trainControl(method = "cv", number = 5)
+ldaFold5 <- train(as.factor(genuine) ~., data = training, method = "lda",trControl = ctrl)
+ldaFold5
+ldaFold5$resample
+predf5 <- predict(ldaFold5, newdata = testing)
+confusionMatrix(predf5, as.factor(testing$genuine))
+
+```
+
+The performance results from running the model on the factor score are very similar to our previous LDA model performance. It seems that performing factor analysis doesn't really make a difference in our performance results.
+
+
+
+
+
+
+
+## LR on Factors:
+```{r warning = FALSE}
+#2 fold
+ctrl <- trainControl(method = "cv", number = 2)
+lrfFold2 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrfFold2
+lrfFold2$resample
+predff2 <- predict(lrfFold2, newdata = testing)
+confusionMatrix(predff2, as.factor(testing$genuine))
+
+#3 fold
+ctrl <- trainControl(method = "cv", number = 3)
+lrfFold3 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrfFold3
+lrfFold3$resample
+predff3 <- predict(lrfFold3, newdata = testing)
+confusionMatrix(predff3, as.factor(testing$genuine))
+
+#4 Fold
+ctrl <- trainControl(method = "cv", number = 4)
+lrfFold4 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrfFold4
+lrfFold4$resample
+predff4 <- predict(lrfFold4, newdata = testing)
+confusionMatrix(predff4, as.factor(testing$genuine))
+
+#5 fold
+ctrl <- trainControl(method = "cv", number = 5)
+lrfFold5 <- train(as.factor(genuine) ~., data = training, method = "glm",trControl = ctrl)
+lrfFold5
+lrfFold5$resample
+predff5 <- predict(lrfFold5, newdata = testing)
+confusionMatrix(predff5, as.factor(testing$genuine))
+```
+Suprisingly, factor analysis on LR actually makes the fold accuracies slightly less than without factor analysis. 
+
+
+## Figures
+
+```{r}
+#make column vectors for accuracy levels 
+LDA <- c(1,1,1,1,1, .975)
+LR <- c(1,1,1,1,1, .975)
+LDAFactor <- c(1,1,1,1,1, .975)
+LRFactor <-c(1,1,1,1,.96875, .975)
+modelComp <- data.frame(LDA, LR, LDAFactor, LRFactor)
+rownames(modelComp) <- c("Fold One", "Fold Two", "Fold Three", "Fold Four", "Fold Five", "Across all Folds")
+modelComp
+```
+
+Overall, it seems that it's really a waste of time to perform factor analysis, as the model performances of LDA and regression perform at near-perfect accuracy. It seems that it is very easy to distinguish between counterfeit and genuine bank notes.
+
+
+## Conclusion 
+
+In this project I analyzed the Swiss Bank Notes to try and develop an optimal prediction model to predict whether a note is counterfeit or genuine.
+
+I began this project by first performing some basic descriptive statistical analysis to try and determine variables of importance, and relationships between variables. From there, I used the caret package to perform K-folds cross validation for my LDA and LR models. Suprisingly, both models performed extraordinarily well, which was a little confusing at first, but I realize that distinguishing between a real and fake bank note is actually very easy and accurate. I performed factor analysis, narrowed down the factors to 2, and then used the factor scores to try and see whether this would help with performance. It didn't really improve my results, as I had an accuracy of .975 across the board——so to me the factor analysis, although simple and quick, just adds on extra assumptions and time which isn't necessary. I conclude that the best model choice is the logistic regression model without factor analysis, because this model is not complex, easier to interpret, more time efficient, and has more mild assumptions than LDA.
+
+
+
+
+
+
+
+
